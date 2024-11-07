@@ -77,6 +77,7 @@ def housing_upload_join_data(conn, year):
     print('Storing data for year: ' + str(year))
     cur.execute(f"LOAD DATA LOCAL INFILE '" + csv_file_path + "' INTO TABLE `prices_coordinates_data` FIELDS TERMINATED BY ',' OPTIONALLY ENCLOSED by '\"' LINES STARTING BY '' TERMINATED BY '\n';")
     print('Data stored for year: ' + str(year))
+    conn.commit()
 
 def data():
     """Read the data from the web or local file, returning structured format such as a data frame"""
