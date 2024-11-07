@@ -70,8 +70,8 @@ def housing_upload_join_data(conn, year, csv_file_path):
     # Write the rows to the CSV file
     with open(csv_file_path, 'w', newline='') as csvfile:
         csv_writer = csv.writer(csvfile)
-    # Write the data rows
-    csv_writer.writerows(rows)
+        # Write the data rows
+        csv_writer.writerows(rows)
     print('Storing data for year: ' + str(year))
     cur.execute(f"LOAD DATA LOCAL INFILE '" + csv_file_path + "' INTO TABLE `prices_coordinates_data` FIELDS TERMINATED BY ',' OPTIONALLY ENCLOSED by '\"' LINES STARTING BY '' TERMINATED BY '\n';")
     print('Data stored for year: ' + str(year))
