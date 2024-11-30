@@ -28,7 +28,7 @@ def download_data_csv(file_url_list, file_name_list):
     if len(file_url_list) != len(file_name_list):
         raise Exception("file_url_list and file_name_list must be of equal length")
 
-    for i in len(file_url_list):
+    for i in range(len(file_url_list)):
         file_url = file_url_list[i]
         file_name = file_name_list[i]
         print (f"Downloading data from {file_url}")
