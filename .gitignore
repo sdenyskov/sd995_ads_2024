@@ -1,3 +1,8 @@
 .DS_Store
 notebooks/cache
 notebooks/used_osm_uk_data
+notebooks/unused_data
+notebooks/uk_oa_with_borders
+notebooks/uk_oa_with_borders.zip
+notebooks/*.csv
+notebooks/census2021-ts*
