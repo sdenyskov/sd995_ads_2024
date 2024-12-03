@@ -6,5 +6,5 @@ notebooks/uk_oa_with_borders
 notebooks/uk_oa_with_borders.zip
 notebooks/*.csv
 notebooks/census2021-ts*
-notebooks/OA2021_to_future_ParlConst_Lookup_EW.csv
-notebooks/OA2021_to_future_ParlConst_Lookup_EW.zip
+notebooks/OA_to_PC
+notebooks/Output_area_(2021)_to_future_Parliamentary_Constituencies_Lookup_in_England_and_Wales.zip
