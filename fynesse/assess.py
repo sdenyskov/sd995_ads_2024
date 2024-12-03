@@ -15,6 +15,14 @@ from sklearn.metrics import mean_squared_error, r2_score
 # import seaborn
 # import sklearn.decomposition as decomposition
 # import sklearn.feature_extraction
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.cluster import KMeans
+import osmnx as ox
+import seaborn as sns
+from sklearn.metrics import mean_squared_error, r2_score
 
 
 def csv_preview(file_name):
@@ -54,9 +62,18 @@ def execute_query(conn, query):
 
     return rows
 
-def create_table_by_query(conn, query, table_name):
+def create_table_by_query(conn, table_name, columns, column_names, data_types, constraints):
 
-    execute_query(conn, f'CREATE TABLE {table_name} AS ({query})')
+    if columns != len(column_names):
+        raise Exception("columns != len(column_names)")
+    elif columns != len(data_types):
+        raise Exception("columns != len(data_types)")
+    elif columns != len(constraints):
+        raise Exception("columns != len(constraints)")
+    else:
+        query = f'CREATE TABLE {table_name} ({", ".join([f"`{column_names[i]}` {data_types[i]} {constraints[i]}" for i in range(columns)])})'
+        print(query)
+        execute_query(conn, query)
 
 def create_single_index(conn, index_name, table_name, field_name):
 
@@ -76,23 +93,25 @@ def get_summary_on_db(conn):
 
     for row in tables:
         table_name = row[0]
-        print(f"\nTable: {table_name}")
-
         table_status = execute_query(conn, f"SHOW TABLE STATUS LIKE '{table_name}';")
         approx_row_count = table_status[0][4] if table_status else 'Unable to fetch row count'
-        print("\nApprox Row Count:", approx_row_count//100000/10, "M")
+        print(f"\nTable {table_name} - Approx Row Count {approx_row_count//100000/10}M")
 
-        limit = 5
+        column_names = execute_query(conn, f"SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '{table_name}';")
+        print(tuple(item[0] for item in column_names))
+
+        limit = 3
         first_rows = execute_query(conn, f"SELECT * FROM `{table_name}` LIMIT {limit};")
-        print(first_rows)
+        for row in first_rows:
+            print(row)
 
         indices = execute_query(conn, f"SHOW INDEX FROM `{table_name}`;")
         if indices:
-            print("\nIndices:")
+            print("Indices:")
             for index in indices:
                 print(f" - {index[2]} ({index[10]}): Column {index[4]}")
         else:
-            print("\nNo indices set on this table.")
+            print("No indices set on this table.")
 
 
 

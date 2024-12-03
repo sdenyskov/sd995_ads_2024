@@ -6,3 +6,5 @@ notebooks/uk_oa_with_borders
 notebooks/uk_oa_with_borders.zip
 notebooks/*.csv
 notebooks/census2021-ts*
+notebooks/OA2021_to_future_ParlConst_Lookup_EW.csv
+notebooks/OA2021_to_future_ParlConst_Lookup_EW.zip
