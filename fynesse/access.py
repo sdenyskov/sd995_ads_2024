@@ -12,14 +12,11 @@ import math
 import numpy as np
 import os
 
-# import httplib2
-# import oauth2
-# import tables
-# import mongodb
-# import sqlite
 
 
 ################ These functions are used for downloading data and transforming it by the scheme csv <-> db <-> df ################
+
+
 
 def download_data_csv(file_url_list, file_name_list):
     """

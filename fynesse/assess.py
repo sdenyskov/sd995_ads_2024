@@ -1,7 +1,5 @@
 from .config import *
 
-# from . import access
-
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -11,18 +9,6 @@ import osmnx as ox
 import seaborn as sns
 from sklearn.metrics import mean_squared_error, r2_score
 
-# import bokeh
-# import seaborn
-# import sklearn.decomposition as decomposition
-# import sklearn.feature_extraction
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-from sklearn.preprocessing import MinMaxScaler
-from sklearn.cluster import KMeans
-import osmnx as ox
-import seaborn as sns
-from sklearn.metrics import mean_squared_error, r2_score
 
 
 def csv_preview(file_name):
@@ -121,15 +107,15 @@ def get_summary_on_db(conn):
 
 def normalise_df(data, columns_not_to_normalize = ['location']):
 
-    # Separate columns that should not be normalized
+    # separating columns that should not be normalised
     excluded_data = data[columns_not_to_normalize]
     data_to_normalize = data.drop(columns=columns_not_to_normalize)
     
-    # Normalize the remaining columns
+    # normalising remaining columns
     scaler = MinMaxScaler()
     scaled_data = pd.DataFrame(scaler.fit_transform(data_to_normalize), columns=data_to_normalize.columns) # add index=data.index
     
-    # Concatenate excluded and normalized data
+    # concatenating excluded and normalised data
     normalised_df = pd.concat([excluded_data, scaled_data], axis=1)
 
     return normalised_df
@@ -185,7 +171,6 @@ def plot_correlation_matrix(data, columns_to_drop):
     plt.xticks(range(dim), correlation_matrix.columns, rotation=45, ha='right')
     plt.yticks(range(dim), correlation_matrix.columns)
 
-    # Add correlation values to cells
     for i in range(dim):
         for j in range(dim):
             plt.text(j, i, f"{correlation_matrix.iloc[i, j]:.2f}", ha="center", va="center", color="black")
@@ -245,13 +230,10 @@ def count_pois_near_coordinates_by_bounds(bounds, tags):
     for tag, value in tags.items():
         if tag in pois_df.columns:
             if value is True:
-                # count all POIs for this tag
-                poi_counts[tag] = pois_df[tag].notnull().sum()
+                poi_counts[tag] = pois_df[tag].notnull().sum() # counting all POIs for this tag
             elif isinstance(value, list):
-                # count POIs that match one of the list values
-                poi_counts[tag] = pois_df[tag].isin(value).sum()
+                poi_counts[tag] = pois_df[tag].isin(value).sum() # counting POIs that match one of the list values
             else:
-                # raise an error
                 raise ValueError(f"Unexpected value: tags[{tag}] = {value}")
         else:
             poi_counts[tag] = 0
@@ -294,17 +276,15 @@ def get_houses_from_price_data_by_bounds(conn, bounds):
 
 def filter_buildings_from_osm(all_buildings_from_osm):
 
-    # Filter polygons only
-    all_buildings_from_osm = all_buildings_from_osm[all_buildings_from_osm['geometry'].geom_type == 'Polygon']
+    all_buildings_from_osm = all_buildings_from_osm[all_buildings_from_osm['geometry'].geom_type == 'Polygon'] # filtering polygons only
 
-    # From geographical coordinate reference system to projected reference system, then compute area in square meters
     all_buildings_from_osm['area_m2'] = all_buildings_from_osm.copy().to_crs(epsg=3395).geometry.area
+    # transforming from geographical coordinate reference system to projected reference system, then computing area in square meters
     
-    # Filter buildings based on the presence of address
     valid_buildings_from_osm = all_buildings_from_osm[all_buildings_from_osm['addr:street'].notnull() 
                                                     & all_buildings_from_osm['addr:housenumber'].notnull() 
                                                     & all_buildings_from_osm['addr:postcode'].notnull()
-                                                    & all_buildings_from_osm['addr:city'].notnull()]
+                                                    & all_buildings_from_osm['addr:city'].notnull()] # filtering buildings based on the presence of address
     
     return valid_buildings_from_osm
 
@@ -313,16 +293,14 @@ def capitalize(x):
 
 def match_buildings_from_osm(valid_buildings_from_osm, all_houses_from_db):
 
-    # Create a copy of valid_buildings_from_osm
     matched_buildings_from_osm = valid_buildings_from_osm.copy()
 
-    # Create empty lists to store matched data
     matched_price = []
     matched_date_of_transfer = []
     matched_latitude = []
     matched_longitude = []
 
-    # Iterate through the rows of matched_buildings_from_osm
+    # iterating through rows of matched_buildings_from_osm
     for _, osm_row in matched_buildings_from_osm.iterrows():
         name = capitalize(osm_row['name'])
         housenumber = capitalize(osm_row['addr:housenumber'])
@@ -330,7 +308,7 @@ def match_buildings_from_osm(valid_buildings_from_osm, all_houses_from_db):
         city = capitalize(osm_row['addr:city'])
         postcode = capitalize(osm_row['addr:postcode'])
 
-        # Iterate through the rows of all_houses_from_db
+        # iterating through rows of all_houses_from_db
         match_found = False
         for _, db_row in all_houses_from_db.iterrows():
             primary_addressable_object_name = capitalize(db_row['primary_addressable_object_name'])
@@ -339,7 +317,7 @@ def match_buildings_from_osm(valid_buildings_from_osm, all_houses_from_db):
             db_city = capitalize(db_row['town_city'])
             db_postcode = capitalize(db_row['postcode'])
             
-            # Check if street, postcode, and city match
+            # checking if street, postcode, and city match
             if street == db_street and postcode == db_postcode and city == db_city:
                 if (housenumber == primary_addressable_object_name) or (housenumber == secondary_addressable_object_name) or (name in primary_addressable_object_name) or (name in secondary_addressable_object_name):
                     matched_price.append(db_row['price'])
@@ -349,20 +327,19 @@ def match_buildings_from_osm(valid_buildings_from_osm, all_houses_from_db):
                     match_found = True
                     break
 
-        # If no match was found, append None to the lists
         if not match_found:
             matched_price.append(None)
             matched_date_of_transfer.append(None)
             matched_latitude.append(None)
             matched_longitude.append(None)
 
-    # Add the matched data as new columns in matched_buildings_from_osm
+    # adding matched data as new columns to matched_buildings_from_osm
     matched_buildings_from_osm['price'] = matched_price
     matched_buildings_from_osm['date_of_transfer'] = matched_date_of_transfer
     matched_buildings_from_osm['latitude'] = matched_latitude
     matched_buildings_from_osm['longitude'] = matched_longitude
 
-    # Remove rows where no match was found
+    # removing rows where no match was found
     matched_buildings_from_osm.dropna(subset=['price', 'date_of_transfer', 'latitude', 'longitude'], inplace=True)
 
     return matched_buildings_from_osm
@@ -377,30 +354,20 @@ def plot_buildings(bounds, place_name, layer1, layer2 = None, layer3 = None):
 
     north, south, east, west = bounds
     
-    # Retrieve main graph
-    graph = ox.graph_from_bbox(north, south, east, west)
+    graph = ox.graph_from_bbox(north, south, east, west) # retrieving main graph
+    nodes, edges = ox.graph_to_gdfs(graph) # retrieving nodes and edges
+    area = ox.geocode_to_gdf(place_name) # getting place boundary related to the place name as a geodataframe
 
-    # Retrieve nodes and edges
-    nodes, edges = ox.graph_to_gdfs(graph)
-
-    # Get place boundary related to the place name as a geodataframe
-    area = ox.geocode_to_gdf(place_name)
-
-    # Initialise plot
     fig, ax = plt.subplots()
-
-    # Plot the footprint
-    area.plot(ax=ax, facecolor="white")
-
-    # Plot street edges
-    edges.plot(ax=ax, linewidth=1, edgecolor="dimgray")
+    area.plot(ax=ax, facecolor="white") # plotting the footprint
+    edges.plot(ax=ax, linewidth=1, edgecolor="dimgray") # plotting street edges
 
     ax.set_xlim([west, east])
     ax.set_ylim([south, north])
     ax.set_xlabel("longitude")
     ax.set_ylabel("latitude")
 
-    # Plot buildings
+    # plotting buildings
     layer1.plot(ax=ax, color="grey", alpha=0.7, markersize=10)
     if layer2 is not None:
         layer2.plot(ax=ax, color="blue", alpha=0.7, markersize=10)

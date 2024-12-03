@@ -6,27 +6,14 @@ import statsmodels.api as sm
 from sklearn.model_selection import KFold
 from sklearn.metrics import mean_squared_error, r2_score
 
-# import sklearn.model_selection as ms
-# import sklearn.linear_model as lm
-# import sklearn.svm as svm
-# import sklearn.naive_bayes as naive_bayes
-# import sklearn.tree as tree
-
-# import GPy
-# import torch
-# import tensorflow as tf
-
-# import scipy.stats # for statistical analysis
 
 
 def fit_and_predict(x, y, x_pred, design_matrix = lambda x: x.reshape(-1, 1), regularised = False, alpha = 0.05, L1_wt = 1.0):
-    """
-    Example of design_matrix:
-    design_matrix = lambda x: sm.add_constant(np.concatenate(((x).reshape(-1, 1), (x**2).reshape(-1, 1), (x**3).reshape(-1, 1)), axis=1))
-    """
-
+    
+    # Example of design_matrix: design_matrix = lambda x: sm.add_constant(np.concatenate(((x).reshape(-1, 1), (x**2).reshape(-1, 1), (x**3).reshape(-1, 1)), axis=1))
+    
     np.random.seed(42)
-
+    
     if regularised:
         model = sm.OLS(y, design_matrix(x))
         results = model.fit_regularized(alpha=alpha, L1_wt=L1_wt)
