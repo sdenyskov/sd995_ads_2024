@@ -2,7 +2,7 @@ from .config import *
 
 #### Imports ####
 
-from access import execute_query
+from . import access
 import csv
 import time
 import numpy as np
@@ -19,12 +19,12 @@ from sklearn.metrics import mean_squared_error, r2_score
 
 def print_counts_per_region(conn, table, column):
     
-    n_rows = execute_query(conn, f"SELECT COUNT(*) AS row_count FROM {table};")[0][0]
+    n_rows = access.execute_query(conn, f"SELECT COUNT(*) AS row_count FROM {table};")[0][0]
     print(f"Total: {n_rows}")
 
     for letter in ['E', 'W', 'S', 'N']:
         
-        n_rows = execute_query(conn, f"SELECT COUNT(*) AS row_count FROM {table} WHERE {column} LIKE '{letter}%';")[0][0]
+        n_rows = access.execute_query(conn, f"SELECT COUNT(*) AS row_count FROM {table} WHERE {column} LIKE '{letter}%';")[0][0]
         print(f"{letter}: {n_rows}")
 
 def add_geography_and_oa_to_pp_data(conn, year, month):
@@ -44,7 +44,7 @@ def add_geography_and_oa_to_pp_data(conn, year, month):
     """
     
     start = time.time()
-    execute_query(conn, query)
+    access.execute_query(conn, query)
 
     query = f"""
     UPDATE pp_data_with_geography
@@ -55,7 +55,7 @@ def add_geography_and_oa_to_pp_data(conn, year, month):
     AND pp_data_with_geography.date_of_transfer <= '{y}';
     """
     
-    execute_query(conn, query)
+    access.execute_query(conn, query)
     end = time.time()
     
     print(f"Transactions from {x} to {y} have been processed in {end - start} seconds.")
@@ -66,7 +66,7 @@ def add_feature_from_oa_to_pc_data(conn, original_table, feature):
     ALTER TABLE pc_data
     ADD COLUMN {feature} bigint DEFAULT 0 NOT NULL;
     """
-    execute_query(conn, query)
+    access.execute_query(conn, query)
 
     query = f"""
     UPDATE pc_data
@@ -84,7 +84,7 @@ def add_feature_from_oa_to_pc_data(conn, original_table, feature):
     ON pc_data.ONS_ID = temp.PCON25CD
     SET pc_data.{feature} = temp.{feature};
     """
-    execute_query(conn, query)
+    access.execute_query(conn, query)
 
     print(f"Feature {feature} has been added to pc_data successfully.")
 
