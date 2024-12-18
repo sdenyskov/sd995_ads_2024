@@ -152,6 +152,44 @@ def housing_upload_join_data(conn, start_date, end_date):
     conn.commit()
     print(f'Data from {start_date} to {end_date} has been inserted successfully')
 
+def find_correlation_in_table(conn, table, column1, column2):
+
+    query = f"""
+    SELECT
+        (AVG({column1} * {column2}) - AVG({column1}) * AVG({column2})) /
+        (STD({column1}) * STD({column2})) AS correlation
+    FROM
+        {table}
+    """
+    
+    corr = access.execute_query(conn, query)[0][0]
+
+    return corr
+
+def correlation_matrix_from_table(conn, table, features_list):
+    
+    correlation_dict = {}
+
+    for i in range(len(features_list)):
+        for j in range(i, len(features_list)):
+            
+            feature1 = features_list[i]
+            feature2 = features_list[j]
+
+            correlation = find_correlation_in_table(conn, table, feature1, feature2)
+
+            if feature1 not in correlation_dict:
+                correlation_dict[feature1] = {}
+            correlation_dict[feature1][feature2] = correlation
+
+            if feature1 != feature2:
+                if feature2 not in correlation_dict:
+                    correlation_dict[feature2] = {}
+                correlation_dict[feature2][feature1] = correlation
+
+    correlation_df = pd.DataFrame(correlation_dict)
+
+    return correlation_df
 
 #### Dataframe operations ####
 
