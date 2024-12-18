@@ -1,5 +1,10 @@
 from .config import *
 
+#### Imports ####
+
+from access import execute_query
+import csv
+import time
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -10,100 +15,145 @@ import seaborn as sns
 from sklearn.metrics import mean_squared_error, r2_score
 
 
+#### Database queries ####
 
-def csv_preview(file_name):
+def print_counts_per_region(conn, table, column):
+    
+    n_rows = execute_query(conn, f"SELECT COUNT(*) AS row_count FROM {table};")[0][0]
+    print(f"Total: {n_rows}")
 
-    try:
-        with open("./" + file_name, 'r') as file:
-            column_titles = file.readline().strip()
-            print("Column Titles:")
-            print(column_titles)
+    for letter in ['E', 'W', 'S', 'N']:
+        
+        n_rows = execute_query(conn, f"SELECT COUNT(*) AS row_count FROM {table} WHERE {column} LIKE '{letter}%';")[0][0]
+        print(f"{letter}: {n_rows}")
 
-            print("\nFirst 10 Rows:")
-            for i in range(10):
-                row = file.readline().strip()
-                if row:
-                    print(row)
-                else:
-                    break
-    except Exception as e:
-        print(f"Error: {e}")
+def add_geography_and_oa_to_pp_data(conn, year, month):
+    
+    x = f"{year}-{month:02}-01"
+    y = f"{year}-{month:02}-31"
 
-def execute_query(conn, query):
+    query = f"""
+    UPDATE pp_data_with_geography 
+    JOIN postcode_data
+    ON pp_data_with_geography.postcode = postcode_data.postcode
+    SET 
+        pp_data_with_geography.easting = postcode_data.easting,
+        pp_data_with_geography.northing = postcode_data.northing,
+        pp_data_with_geography.geography = ST_GeomFromText(CONCAT('POINT(', postcode_data.easting, ' ', postcode_data.northing, ')'))
+    WHERE pp_data_with_geography.date_of_transfer >= '{x}' AND pp_data_with_geography.date_of_transfer <= '{y}';
     """
-    Examples are:
-    SHOW TABLES;
-    SHOW TABLE STATUS LIKE '{table_name}';
-    SHOW INDEX FROM `{table_name}`;
-    SELECT * FROM `{table_name}` LIMIT {sample_size};
-    SELECT count(*) FROM `{table_name}`;
-    SELECT MIN({column}) AS min_value, MAX({column}) AS max_value FROM `{table_name}`
+    
+    start = time.time()
+    execute_query(conn, query)
+
+    query = f"""
+    UPDATE pp_data_with_geography
+    JOIN oa_data
+    ON ST_Within(pp_data_with_geography.geography, oa_data.geometry)
+    SET pp_data_with_geography.OA21CD = oa_data.OA21CD
+    WHERE pp_data_with_geography.date_of_transfer >= '{x}' 
+    AND pp_data_with_geography.date_of_transfer <= '{y}';
     """
+    
+    execute_query(conn, query)
+    end = time.time()
+    
+    print(f"Transactions from {x} to {y} have been processed in {end - start} seconds.")
+
+def add_feature_from_oa_to_pc_data(conn, original_table, feature):
+    
+    query = f"""
+    ALTER TABLE pc_data
+    ADD COLUMN {feature} bigint DEFAULT 0 NOT NULL;
+    """
+    execute_query(conn, query)
+
+    query = f"""
+    UPDATE pc_data
+    JOIN (
+        SELECT
+            oa_to_pc.PCON25CD,
+            SUM({original_table}.{feature}) AS {feature}
+        FROM
+            oa_to_pc
+        JOIN
+            {original_table} ON oa_to_pc.OA21CD = {original_table}.OA21CD
+        GROUP BY
+            oa_to_pc.PCON25CD
+    ) AS temp
+    ON pc_data.ONS_ID = temp.PCON25CD
+    SET pc_data.{feature} = temp.{feature};
+    """
+    execute_query(conn, query)
+
+    print(f"Feature {feature} has been added to pc_data successfully.")
+
+def housing_upload_join_data_csv(conn, start_date, end_date, csv_file_name):
+    # start_date = str(year) + "-01-01"
+    # end_date = str(year) + "-12-31"
+
+  cur = conn.cursor()
+  print(f'Selecting data')
+  cur.execute(f'''
+    SELECT 
+      pp.price, pp.date_of_transfer, pp.postcode, pp.property_type, 
+      pp.new_build_flag, pp.tenure_type, pp.primary_addressable_object_name, 
+      pp.secondary_addressable_object_name, pp.street, pp.locality, 
+      pp.town_city, pp.district, pp.county, po.country, po.latitude, 
+      po.longitude, po.easting, po.northing
+    FROM (
+      SELECT 
+        price, date_of_transfer, postcode, property_type, new_build_flag, 
+        tenure_type, primary_addressable_object_name, secondary_addressable_object_name, 
+        street, locality, town_city, district, county
+      FROM pp_data
+      WHERE date_of_transfer BETWEEN "{start_date}" AND "{end_date}"
+    ) AS pp
+    INNER JOIN postcode_data AS po 
+    ON pp.postcode = po.postcode;
+  ''')
+  rows = cur.fetchall()
+
+  # Write the rows to the CSV file
+  with open(csv_file_name, 'w', newline='') as csvfile:
+    csv_writer = csv.writer(csvfile)
+    # Write the data rows
+    csv_writer.writerows(rows)
+  print(f'CSV has been formed. Uploading data to the database')
+  cur.execute(f"LOAD DATA LOCAL INFILE '" + csv_file_name + "' INTO TABLE `prices_coordinates_data` FIELDS TERMINATED BY ',' OPTIONALLY ENCLOSED by '\"' LINES STARTING BY '' TERMINATED BY '\n';")
+  print(f'Data has been uploaded to the databse successfully')
+  conn.commit()
+
+def housing_upload_join_data(conn, start_date, end_date):
+    # start_date = str(year) + "-01-01"
+    # end_date = str(year) + "-12-31"
 
     cur = conn.cursor()
+    print(f'Selecting and inserting data from {start_date} to {end_date}')
+    query = f"""
+        INSERT INTO prices_coordinates_data (
+            price, date_of_transfer, postcode, property_type, 
+            new_build_flag, tenure_type, primary_addressable_object_name, 
+            secondary_addressable_object_name, street, locality, town_city, 
+            district, county, country, latitude, longitude, easting, northing
+        )
+        SELECT 
+            pp.price, pp.date_of_transfer, pp.postcode, pp.property_type, 
+            pp.new_build_flag, pp.tenure_type, pp.primary_addressable_object_name, 
+            pp.secondary_addressable_object_name, pp.street, pp.locality, 
+            pp.town_city, pp.district, pp.county, po.country, po.latitude, 
+            po.longitude, po.easting, po.northing
+        FROM pp_data AS pp
+        INNER JOIN postcode_data AS po 
+        ON pp.postcode = po.postcode
+        WHERE pp.date_of_transfer BETWEEN \"{start_date}\" AND \"{end_date}\";
+    """
     cur.execute(query)
-    rows = cur.fetchall()
-
     conn.commit()
-
-    return rows
-
-def create_table_by_query(conn, table_name, columns, column_names, data_types, constraints):
-
-    if columns != len(column_names):
-        raise Exception("columns != len(column_names)")
-    elif columns != len(data_types):
-        raise Exception("columns != len(data_types)")
-    elif columns != len(constraints):
-        raise Exception("columns != len(constraints)")
-    else:
-        query = f'CREATE TABLE {table_name} ({", ".join([f"`{column_names[i]}` {data_types[i]} {constraints[i]}" for i in range(columns)])})'
-        print(query)
-        execute_query(conn, query)
-
-def create_single_index(conn, index_name, table_name, field_name):
-
-    rows = execute_query(conn, f"CREATE INDEX {index_name} ON {table_name}({field_name});")
-
-    return rows
-
-def create_multiple_index(conn, index_name, table_name, field_names):
-
-    rows = execute_query(conn, f"CREATE INDEX {index_name} ON `{table_name}` ({', '.join(field_names)})")
-
-    return rows
-
-def get_summary_on_db(conn):
-
-    tables = execute_query(conn, "SHOW TABLES;")
-
-    for row in tables:
-        table_name = row[0]
-        table_status = execute_query(conn, f"SHOW TABLE STATUS LIKE '{table_name}';")
-        approx_row_count = table_status[0][4] if table_status else 'Unable to fetch row count'
-        print(f"\nTable {table_name} - Approx Row Count {approx_row_count//100000/10}M")
-
-        column_names = execute_query(conn, f"SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '{table_name}';")
-        print(tuple(item[0] for item in column_names))
-
-        limit = 3
-        first_rows = execute_query(conn, f"SELECT * FROM `{table_name}` LIMIT {limit};")
-        for row in first_rows:
-            print(row)
-
-        indices = execute_query(conn, f"SHOW INDEX FROM `{table_name}`;")
-        if indices:
-            print("Indices:")
-            for index in indices:
-                print(f" - {index[2]} ({index[10]}): Column {index[4]}")
-        else:
-            print("No indices set on this table.")
+    print(f'Data from {start_date} to {end_date} has been inserted successfully')
 
 
-
-################################
-
-
+#### Dataframe operations ####
 
 def normalise_df(data, columns_not_to_normalize = ['location']):
 
@@ -129,95 +179,7 @@ def kmeans_clusters(data, n_clusters):
     return clusters
 
 
-
-################################
-
-
-
-def plot_clusters(clustered_data, n_clusters):
-    
-    colors = sns.color_palette("hsv", n_clusters)  # other options: "Spectral", "cubehelix", etc.
-
-    plt.figure(figsize = (10, 10))
-
-    for cluster, color in enumerate(colors):
-        cluster_data = clustered_data[clustered_data['cluster'] == cluster]
-        plt.scatter(
-            cluster_data['longitude'], 
-            cluster_data['latitude'], 
-            label=f'Cluster {cluster}', 
-            color=color
-        )
-        for _, row in cluster_data.iterrows():
-            plt.text(row['longitude'] + 0.02, row['latitude'] + 0.02, row['location'])
-
-    plt.axis('equal')
-    plt.grid(True)
-    plt.xlabel('Longitude')
-    plt.ylabel('Latitude')
-    plt.legend(title='Clusters')
-    plt.show()
-
-def plot_correlation_matrix(data, columns_to_drop):
-
-    correlation_matrix = data.drop(columns_to_drop).corr()
-
-    dim = len(correlation_matrix.columns)
-
-    plt.figure(figsize=(10, 8))
-    plt.imshow(correlation_matrix, cmap='coolwarm', interpolation='nearest')
-    plt.colorbar(label='Correlation Coefficient')
-    plt.title("Correlation Matrix of Features")
-    plt.xticks(range(dim), correlation_matrix.columns, rotation=45, ha='right')
-    plt.yticks(range(dim), correlation_matrix.columns)
-
-    for i in range(dim):
-        for j in range(dim):
-            plt.text(j, i, f"{correlation_matrix.iloc[i, j]:.2f}", ha="center", va="center", color="black")
-
-    plt.tight_layout()
-
-def plot_predictions_against_trues(y, y_pred, limits = None):
-    
-    plt.figure(figsize=(8, 6))
-
-    if limits is not None:
-        plt.xlim(limits)
-        plt.ylim(limits)
-
-    plt.scatter(y, y_pred, color='blue', label='Predictions')
-    plt.plot([min(y), max(y)], [min(y), max(y)], 'r--', label="Perfect Prediction")
-
-    plt.xlabel('True values')
-    plt.ylabel('Predictions')
-    plt.legend()
-    plt.show()
-
-    rmse = np.sqrt(mean_squared_error(y, y_pred))
-    r2 = r2_score(y, y_pred)
-    corr = np.corrcoef(y, y_pred)[0, 1]
-
-    print(f"RMSE: {rmse}\nR2: {r2}\nCORRELATION: {corr}")
-
-def plot_predictions_and_trues(x_values, true_values, pred_values, limits = None):
-    
-    plt.figure(figsize=(8, 6))
-
-    if limits is not None:
-        plt.xlim(limits)
-        plt.ylim(limits)
-    
-    plt.plot(x_values, true_values, label=f"True values", color = 'orange')
-    plt.plot(x_values, pred_values, label=f"Predicted values", color = 'blue')
-
-    plt.legend()
-    plt.show()
-
-
-
-################################
-
-
+#### Working with OSM data ####
 
 def count_pois_near_coordinates_by_bounds(bounds, tags):
     
@@ -345,10 +307,165 @@ def match_buildings_from_osm(valid_buildings_from_osm, all_houses_from_db):
     return matched_buildings_from_osm
 
 
+#### Plotting ####
 
-################################
+def plot_clusters(clustered_data, n_clusters):
+    
+    colors = sns.color_palette("hsv", n_clusters)  # other options: "Spectral", "cubehelix", etc.
 
+    plt.figure(figsize = (10, 10))
 
+    for cluster, color in enumerate(colors):
+        cluster_data = clustered_data[clustered_data['cluster'] == cluster]
+        plt.scatter(
+            cluster_data['longitude'], 
+            cluster_data['latitude'], 
+            label=f'Cluster {cluster}', 
+            color=color
+        )
+        for _, row in cluster_data.iterrows():
+            plt.text(row['longitude'] + 0.02, row['latitude'] + 0.02, row['location'])
+
+    plt.axis('equal')
+    plt.grid(True)
+    plt.xlabel('Longitude')
+    plt.ylabel('Latitude')
+    plt.legend(title='Clusters')
+    plt.show()
+
+def plot_cluster_matrix(matrix, xlabel, ylabel):
+
+    plt.figure(figsize=(8, 6))
+    plt.imshow(matrix, cmap='coolwarm', interpolation='nearest', aspect='auto')
+    plt.colorbar(label='Count')
+    plt.title("Cluster Grid")
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.xticks(range(len(matrix.columns)), matrix.columns)
+    plt.yticks(range(len(matrix.index)), matrix.index)
+    
+    for i in range(len(matrix.index)):
+        for j in range(len(matrix.columns)):
+            plt.text(j, i, f"{matrix.iloc[i, j]}", ha='center', va='center', color="black")
+
+    plt.tight_layout()
+    plt.show()
+
+def plot_correlation_matrix(data, columns_to_drop):
+
+    correlation_matrix = data.drop(columns_to_drop).corr()
+
+    dim = len(correlation_matrix.columns)
+
+    plt.figure(figsize=(10, 8))
+    plt.imshow(correlation_matrix, cmap='coolwarm', interpolation='nearest')
+    plt.colorbar(label='Correlation Coefficient')
+    plt.title("Correlation Matrix of Features")
+    plt.xticks(range(dim), correlation_matrix.columns, rotation=45, ha='right')
+    plt.yticks(range(dim), correlation_matrix.columns)
+
+    for i in range(dim):
+        for j in range(dim):
+            plt.text(j, i, f"{correlation_matrix.iloc[i, j]:.2f}", ha="center", va="center", color="black")
+
+    plt.tight_layout()
+
+def plot_correlation_between_dataframes(df1, df2):
+    
+    correlation_matrix_full = np.zeros((df1.shape[1], df2.shape[1]))
+    
+    for i, col1 in enumerate(df1.columns):
+        for j, col2 in enumerate(df2.columns):
+            correlation_matrix_full[i, j] = df1[col1].corr(df2[col2])
+    
+    correlation_matrix_df = pd.DataFrame(correlation_matrix_full, index=df1.columns, columns=df2.columns)
+    # correlation_matrix_df = correlation_matrix_df.applymap(lambda x: np.nan if -0.10 < x < 0.10 else x)
+    
+    fig, ax = plt.subplots(figsize=(10, 8))
+    
+    sns.heatmap(correlation_matrix_df, annot=True, fmt='.2f', cmap='coolwarm', 
+                cbar_kws={'label': 'Correlation'}, ax=ax, linewidths=0.5, linecolor='black', 
+                annot_kws={'size': 10, 'weight': 'bold'})
+
+    ax.set_xticklabels(correlation_matrix_df.columns, rotation=45, ha='right', fontsize=10)
+    ax.set_yticks(np.arange(len(correlation_matrix_df.index)))
+    ax.set_yticklabels(correlation_matrix_df.index, rotation=0, fontsize=10)
+        
+    # ax.set_xticklabels(correlation_matrix_df.columns, rotation=45, ha='right', fontsize=10)
+    # ax.set_yticklabels(correlation_matrix_df.index, rotation=0, fontsize=10)
+    
+    plt.tight_layout()
+    plt.show()
+
+def plot_predictions_against_trues(y, y_pred, limits = None):
+    
+    plt.figure(figsize=(8, 6))
+
+    if limits is not None:
+        plt.xlim(limits)
+        plt.ylim(limits)
+
+    plt.scatter(y, y_pred, color='blue', label='Predictions')
+    plt.plot([min(y), max(y)], [min(y), max(y)], 'r--', label="Perfect Prediction")
+
+    plt.xlabel('True values')
+    plt.ylabel('Predictions')
+    plt.legend()
+    plt.show()
+
+    rmse = np.sqrt(mean_squared_error(y, y_pred))
+    r2 = r2_score(y, y_pred)
+    corr = np.corrcoef(y, y_pred)[0, 1]
+
+    print(f"RMSE: {rmse}\nR2: {r2}\nCORRELATION: {corr}")
+
+def plot_predictions_and_trues(x_values, true_values, pred_values, limits = None):
+    
+    plt.figure(figsize=(8, 6))
+
+    if limits is not None:
+        plt.xlim(limits)
+        plt.ylim(limits)
+    
+    plt.plot(x_values, true_values, label=f"True values", color = 'orange')
+    plt.plot(x_values, pred_values, label=f"Predicted values", color = 'blue')
+
+    plt.legend()
+    plt.show()
+
+def get_ew_boundary_polygon():
+    
+    uk_boundary_coords = [
+        (-5.75, 50.00),
+        (-4.45, 51.10),
+        (-3.10, 51.25),
+        (-2.75, 51.55),
+        (-3.35, 51.35),
+        (-5.35, 51.75),
+        (-4.15, 52.60),
+        (-4.60, 53.40),
+        (-3.15, 53.50),
+        (-3.75, 54.60),
+        (-2.00, 55.80),
+        (-1.60, 55.60),
+        (-1.15, 54.65),
+        (-0.50, 54.50),
+        (0.20, 53.60),
+        (0.45, 53.00),
+        (1.30, 53.00),
+        (1.80, 52.60),
+        (1.60, 52.00),
+        (0.80, 51.50),
+        (1.70, 51.40),
+        (0.35, 50.50),
+        (-3.25, 50.60),
+        (-3.70, 50.20),
+        (-4.70, 50.30),
+        (-5.15, 50.00),
+        (-5.75, 50.00)
+    ]
+
+    return uk_boundary_coords
 
 def plot_buildings(bounds, place_name, layer1, layer2 = None, layer3 = None):
 
