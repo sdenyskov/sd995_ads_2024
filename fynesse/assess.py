@@ -12,7 +12,7 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.cluster import KMeans
 import osmnx as ox
 import seaborn as sns
-from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.metrics import mean_squared_error, r2_score, silhouette_score
 
 
 #### Database queries ####
@@ -215,6 +215,32 @@ def kmeans_clusters(data, n_clusters):
     clusters = kmeans.labels_
 
     return clusters
+
+def elbow_method(data, max_k=10):
+    distortions = []
+    silhouette_scores = []
+    for k in range(2, max_k + 1):
+        kmeans = KMeans(n_clusters=k, random_state=42)
+        kmeans.fit(data)
+        distortions.append(kmeans.inertia_)
+        silhouette_scores.append(silhouette_score(data, kmeans.labels_))
+    
+    plt.figure(figsize=(12, 6))
+    
+    plt.subplot(1, 2, 1)
+    plt.plot(range(2, max_k + 1), distortions, marker='o')
+    plt.title("Elbow Method (Distortion)")
+    plt.xlabel("Number of clusters")
+    plt.ylabel("Distortion")
+
+    plt.subplot(1, 2, 2)
+    plt.plot(range(2, max_k + 1), silhouette_scores, marker='o')
+    plt.title("Silhouette Score")
+    plt.xlabel("Number of clusters")
+    plt.ylabel("Silhouette Score")
+    
+    plt.tight_layout()
+    plt.show()
 
 
 #### Working with OSM data ####
